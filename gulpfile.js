@@ -19,7 +19,7 @@ const paths = {
     src: "src/scss/main.scss",
   },
   img: {
-    src: "src/img/**/*",
+    src: "src/assets/img/**/*",
   },
   html: {
     src: "src/index.html",
