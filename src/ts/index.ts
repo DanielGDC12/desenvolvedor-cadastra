@@ -1,12 +1,16 @@
 import { CreateElement,Product } from "./types";
 const serverUrl = "http://localhost:5000";
 
+let globalFitlersVal:any;
+
 function main() {
-  console.log(serverUrl);
-  getProductData()
+  handleProductInfo()
+  handleOrderVisibility()
 }
 
 document.addEventListener("DOMContentLoaded", main);
+
+
 
 export function formatPrice(price: number) {
   return new Intl.NumberFormat('pt-BR', {
@@ -49,13 +53,10 @@ function createElement(element: Element | CreateElement)  {
   }
 }
 
-async function getProductData(){
- 
-
+async function handleProductInfo(){
   await fetch('http://localhost:5000/products')
   .then(rawData => rawData.json())
   .then((data:Product[]) => {
-    console.log(data)
     const colors = [...new Set(data.map((product) => product.color))]
     const sizes = [...new Set(data.map((product) => product.size[0]))]
     const price = [
@@ -65,18 +66,23 @@ async function getProductData(){
       "de R$:301 até R$500",
       "a partir de R$500",
     ]
-
-    const colorFilter = createFilter(colors,'Cores')
-    const sizeFilter = createFilter(sizes,'Tamanhos',true)
-    const priceFilter = createFilter(price,"Faixa de preço")
     const products = data.map((product) => {
       const productListItem  = createProductCardElement(product)
 
       return productListItem
     })
-
-    renderProducts(products)
+  const productsSliced = products.slice(0,9)
+    const colorFilter = createFilter(colors,'Cores')
+    const sizeFilter = createFilter(sizes,'Tamanhos',true)
+    const priceFilter = createFilter(price,"Faixa de preço")
+    renderProducts(productsSliced)
+    loadMoreProducts(data)
+    handleFiltersSelect(data)
     renderFilters([colorFilter,sizeFilter,priceFilter])
+    handleChooseOrder(data)
+    // handleFilters(data)
+
+    
   })
 }
 
@@ -131,9 +137,9 @@ function createProductCardElement(product:Product) {
 }
 
 function renderProducts(products:Element[]){
-  const $resultListWrapper= document.querySelector<HTMLElement>('.searchResultList')
+  const $resultListWrapper = document.querySelector<HTMLElement>('.searchResultList')
   if(!$resultListWrapper) return;
-
+  $resultListWrapper.innerHTML = ''
   products.forEach(product => {
     $resultListWrapper.appendChild(product)
   })
@@ -159,7 +165,9 @@ function createFilter(filterOptions:string[],title:string,isSizeFilter?:boolean)
       classes:['filterOptionSizeListItem'],
       children:[`${size}`],
       attributes:{
-        "role":"button"
+        "role":"button",
+          "dataId":`${size}`,
+          "filter-type":`${title}`
       }
     }
   })
@@ -168,21 +176,11 @@ function createFilter(filterOptions:string[],title:string,isSizeFilter?:boolean)
     return {
        tag:"li",
        classes:["filterOptionItem"],
-       children:[{
-        tag:"input",
-        classes:["checkBoxOption"],
-        attributes:{
-          "type":"checkbox",
-          "name":`${filterOption}-option`,
-          "id":`${filterOption}-option`
-        }
-       },{
-        tag:"label",
-        children:[`${filterOption}`],
-        attributes:{
-          "for":`${filterOption}-option`
-        }
-       }],
+       attributes:{
+        "dataId":`${filterOption}`,
+         "filter-type":`${title}`
+       },
+       children:[filterOption],
     }
   })
 
@@ -207,3 +205,146 @@ function createFilter(filterOptions:string[],title:string,isSizeFilter?:boolean)
   return filter
 }
 
+function handleFiltersSelect(products:Product[]){
+  window.addEventListener('click',(event) => {
+    const target = event.target as Element
+    if(!target.classList.contains('filterOptionItem') && !target.classList.contains('filterOptionSizeListItem')) return;
+    target.classList.toggle('checked')  
+
+
+    const filterType = target.getAttribute('filter-type')
+    const dataId = target.getAttribute('dataid')
+
+    if(filterType === "Cores"){
+      globalFitlersVal = [...products.filter((product) => product.color === dataId)].map(x => createProductCardElement(x))
+    renderProducts(globalFitlersVal)
+    }
+
+  })  
+}
+function teste(a:any){
+  console.log(a)
+}
+
+function loadMoreProducts(products:Product[]){
+  const $loadMoreBtn = document.querySelector('.loadMoreBtn')
+  if(!$loadMoreBtn) return;
+
+
+  const productOrderByOption = {
+    "Menor Preço": (() =>  orderByPriceAsc(products).map((product => createProductCardElement(product))))(),
+    "Maior Preço": (() =>  orderByPriceDesc(products).map((product => createProductCardElement(product))))(),
+    "Mais Recentes":(() => orderByReleaseDate(products).map((product => createProductCardElement(product))))()
+  }
+
+
+  $loadMoreBtn.addEventListener('click',(event) => {
+      const orderOptionChoosed  = document.querySelector('.triggerSelected').textContent 
+      const $totalItens = [...document.querySelectorAll('.searchResultList li')]
+      if($totalItens.length  >= products.length)return hideLoadMoreContent();
+
+      if(orderOptionChoosed === "Ordenar por:") {
+        const defaultProducts = products.map((product) => createProductCardElement(product)).slice(0,$totalItens.length + 3)
+        renderProducts(defaultProducts)
+        return;
+      }
+      
+      const newProducts = productOrderByOption[orderOptionChoosed as keyof typeof productOrderByOption].slice(0,$totalItens.length + 3)
+      renderProducts(newProducts)
+      return;
+  })  
+}
+
+function hideLoadMoreContent() {
+  const $loadMoreWrapper = document.querySelector('.loadMore')
+  if(!$loadMoreWrapper) return;
+
+  $loadMoreWrapper.setAttribute('style','display:none;')
+}
+
+function handleOrderVisibility() {
+  const $trigger = document.querySelector('.orderTrigger')
+  const $orderWrapper = document.querySelector('.searchResultOrderWrapper')
+  $trigger.addEventListener('click',function() {
+      $orderWrapper.classList.toggle('visible')
+  })
+}
+
+function handleChooseOrder(products:Product[]) {
+  const $orderOptions = [...document.querySelectorAll('.orderListItem')]
+  const $triggerChoosed = document.querySelector('.orderTrigger .triggerSelected')
+  const $orderOptionsList = document.querySelector('.searchResultOrderWrapper')
+  
+
+
+
+  const productOrderByOption = {
+    "Menor Preço": (() =>  orderByPriceAsc(products).map((product => createProductCardElement(product))))(),
+    "Maior Preço": (() =>  orderByPriceDesc(products).map((product => createProductCardElement(product))))(),
+    "Mais Recentes":(() => orderByReleaseDate(products).map((product => createProductCardElement(product))))()
+  }
+
+
+  $orderOptions.forEach((orderOption) => {
+    orderOption.addEventListener('click',function(){
+      const textOption = this.textContent as keyof typeof productOrderByOption
+      $triggerChoosed.textContent = textOption
+      $orderOptionsList.classList.remove('visible')
+      renderProducts(productOrderByOption[textOption].slice(0,9))
+      removeFilters()
+    })
+  })
+}
+
+function  orderByPriceAsc (products:Product[])  {
+  return products.sort((a,b) => a.price - b.price)
+ }
+ function orderByPriceDesc  (products:Product[])  {
+   return products.sort((a,b) => b.price - a.price  )
+ }
+
+ function  orderByReleaseDate (products:Product[])  {
+   return products.sort((a,b) =>   new Date(b.date).valueOf()- new Date(a.date).valueOf())
+ }
+
+function removeFilters() {
+  const $filtersChecked = [...document.querySelectorAll('.filterOptionList .checked')]
+  $filtersChecked.forEach((checked) => {
+    checked.classList.remove('checked')
+  })
+}
+
+// function handleFilters(data:Product[]) {
+// const targetNode = document.querySelector('aside');
+
+// const config = { attributes: true,subtree: true };
+
+// const callback = (mutationList:MutationRecord[], ) => {
+//   for (const mutation of mutationList) {
+//     const target = mutation.target as Element
+//     if(!target.classList.contains('filterOptionItem') && !target.classList.contains('filterOptionSizeListItem')) return;
+//     getAllCheckedFilters(data)
+//   }
+// };
+
+// const observer = new MutationObserver(callback);
+
+// observer.observe(targetNode, config);
+
+// }
+
+// function getAllCheckedFilters(data:Product[]) {
+//   const checkedFilters = [...document.querySelectorAll<HTMLElement>('.filterOptionItem.checked')]
+//   const checkedSizes = [...document.querySelectorAll('.filterOptionSizeListItem.checked')]
+
+//   const colorsOptions = handleFilterByAttribute(checkedFilters,"Cores")
+//   const sizeOptions = handleFilterByAttribute(checkedSizes,"Tamanhos")
+
+// } 
+
+// function handleFilterByAttribute(elements:Element[],filterTypeName:string){
+//   return elements.filter(element => {
+//     const filterType = element.getAttribute('filter-type')
+//     return filterType === filterTypeName
+//   })
+// }
